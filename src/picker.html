@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'self'" />
+<title>Radexa — escolher janela para capturar</title>
+<style>
+  :root { color-scheme: light dark; --b: #d6dde5; --bg: #fff; --fg: #0f2240; --mut: #5b6b80; --pri: #0d9488; }
+  @media (prefers-color-scheme: dark) { :root { --b: #2a3a52; --bg: #0b1626; --fg: #e8eef6; --mut: #9fb0c6; } }
+  body { margin: 0; font: 13px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  header { padding: 18px 20px 8px; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  p { margin: 0; color: var(--mut); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; padding: 12px 20px 20px; }
+  button.card { text-align: left; border: 1px solid var(--b); border-radius: 12px; padding: 8px; background: transparent; color: inherit; cursor: pointer; }
+  button.card:hover, button.card:focus-visible { border-color: var(--pri); outline: 2px solid var(--pri); outline-offset: 0; }
+  .thumb { width: 100%; aspect-ratio: 16/10; object-fit: contain; background: #0002; border-radius: 8px; display: block; }
+  .name { margin-top: 6px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tag { font-size: 11px; color: var(--mut); }
+  .warn { margin: 10px 20px 0; padding: 10px 12px; border-radius: 10px; background: #f59e0b22; border: 1px solid #f59e0b66; color: var(--fg); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>O que o Radexa deve capturar?</h1>
+    <p>Escolha a janela do sistema em que você lauda (Clinux, RIS, aparelho). A captura só acontece quando você clica em Capturar ou usa o atalho, e só lê medidas e texto.</p>
+  </header>
+  <div id="warn" class="warn" hidden>No macOS, libere o Radexa em Ajustes do Sistema › Privacidade e Segurança › Gravação de Tela, feche e abra o Radexa de novo.</div>
+  <div id="grid" class="grid" aria-live="polite"><p>Carregando…</p></div>
+  <script src="picker.js"></script>
+</body>
+</html>
