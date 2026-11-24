@@ -31,19 +31,36 @@ jobs:
       - run: npm ci
       - run: npm test
       - name: Gerar instalador
-        run: npm run ${{ matrix.script }}
+        shell: bash
         env:
-          # Opcionais — sem eles o instalador sai sem assinatura (aviso do Windows/macOS ao abrir).
+          # Opcionais. Sem eles o instalador sai sem assinatura oficial (aviso do Windows/macOS ao abrir).
           # Windows: certificado .pfx em base64 e a senha.
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          S_WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          S_WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
           # macOS: certificado "Developer ID Application" (.p12 em base64) e conta Apple para notarizar.
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CSC_LINK != '' }}
+          S_MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          S_MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          S_APPLE_ID: ${{ secrets.APPLE_ID }}
+          S_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          S_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Secret que não existe chega como texto vazio, e o electron-builder tenta abrir ""
+          # como arquivo de certificado. Só exporta o que foi configurado de verdade.
+          EXTRA=()
+          if [ -n "$S_WIN_CSC_LINK" ]; then
+            export WIN_CSC_LINK="$S_WIN_CSC_LINK" WIN_CSC_KEY_PASSWORD="$S_WIN_CSC_KEY_PASSWORD"
+          fi
+          if [ -n "$S_MAC_CSC_LINK" ]; then
+            export CSC_LINK="$S_MAC_CSC_LINK" CSC_KEY_PASSWORD="$S_MAC_CSC_KEY_PASSWORD"
+            if [ -n "$S_APPLE_ID" ]; then
+              export APPLE_ID="$S_APPLE_ID" APPLE_APP_SPECIFIC_PASSWORD="$S_APPLE_APP_SPECIFIC_PASSWORD" APPLE_TEAM_ID="$S_APPLE_TEAM_ID"
+            fi
+          else
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            # sem certificado: assinatura ad-hoc, senão o macOS (chip M) diz que o app "está danificado"
+            if [ "$RUNNER_OS" = "macOS" ]; then EXTRA+=("-c.mac.identity=-"); fi
+          fi
+          npm run ${{ matrix.script }} -- "${EXTRA[@]}"
       - uses: actions/upload-artifact@v4
         with:
           name: radexa-desktop-${{ matrix.os }}
