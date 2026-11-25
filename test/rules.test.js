@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const r = require("../src/lib/rules");
 
 test("URL do Radexa: produção por padrão, http só em localhost", () => {
-  assert.equal(r.resolveBaseUrl({}), "https://radexa.com.br");
+  assert.equal(r.resolveBaseUrl({}), "https://www.radexa.com.br");
   assert.equal(r.resolveBaseUrl({ RADEXA_URL: "http://localhost:8080/" }), "http://localhost:8080");
   assert.throws(() => r.resolveBaseUrl({ RADEXA_URL: "http://radexa.evil.com" }));
   assert.throws(() => r.resolveBaseUrl({ RADEXA_URL: "file:///etc/passwd" }));
@@ -16,6 +16,11 @@ test("só páginas do Radexa ficam dentro do app", () => {
   assert.equal(r.isAllowedUrl("https://radexa.com.br.evil.com/", o), false);
   assert.equal(r.isAllowedUrl("https://evil.com/?https://radexa.com.br", o), false);
   assert.equal(r.isAllowedUrl("javascript:alert(1)", o), false);
+  // com e sem www é o mesmo site; outro subdomínio não
+  assert.equal(r.isAllowedUrl("https://www.radexa.com.br/desktop", "https://radexa.com.br"), true);
+  assert.equal(r.isAllowedUrl("https://radexa.com.br/desktop", "https://www.radexa.com.br"), true);
+  assert.equal(r.isAllowedUrl("https://evil.radexa.com.br/", "https://www.radexa.com.br"), false);
+  assert.equal(r.isAllowedUrl("http://www.radexa.com.br/", "https://radexa.com.br"), false);
 });
 
 test("caminho interno seguro", () => {
@@ -32,10 +37,12 @@ test("colar: comando por sistema", () => {
   assert.match(r.pasteCommand("darwin").args[1], /command down/);
 });
 
-test("barra no canto inferior direito e cresce para cima", () => {
+test("barra embaixo no centro e cresce para cima", () => {
   const wa = { x: 0, y: 0, width: 1920, height: 1040 };
   const c = r.barBounds(wa, false);
-  assert.deepEqual(c, { x: 1920 - 440 - 16, y: 1040 - 84 - 16, width: 440, height: 84 });
+  const W = r.COLLAPSED.width;
+  const H = r.COLLAPSED.height;
+  assert.deepEqual(c, { x: (1920 - W) / 2, y: 1040 - H - 16, width: W, height: H });
   const e = r.barBounds(wa, true, c);
   assert.equal(e.y + e.height, c.y + c.height, "a base não mexe");
   assert.equal(e.height, 560);
@@ -71,4 +78,6 @@ test("configuração: padrões e valores salvos", () => {
   assert.equal(c.openAtLogin, true);
   assert.equal(c.captureSource, null);
   assert.equal(r.mergeConfig(null).showBarOnStart, true);
+  assert.equal(r.mergeConfig(null).discreet, false, "modo discreto desligado por padrão");
+  assert.equal(r.mergeConfig({ discreet: true }).discreet, true);
 });

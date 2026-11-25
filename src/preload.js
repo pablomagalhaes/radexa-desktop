@@ -5,8 +5,9 @@
  */
 const { contextBridge, ipcRenderer } = require("electron");
 
-const info = ipcRenderer.sendSync("desktop:origin");
-if (info && location.origin === info.origin) {
+// o processo principal confere a página (com ou sem www) e diz se ela recebe a ponte
+const info = ipcRenderer.sendSync("desktop:origin", location.href);
+if (info && info.allowed) {
   const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
   contextBridge.exposeInMainWorld("radexaDesktop", {
     version: info.version,

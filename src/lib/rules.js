@@ -3,7 +3,8 @@
  * Regras puras do Radexa Desktop (sem Electron), para testar com node --test.
  */
 
-const DEFAULT_URL = "https://radexa.com.br";
+// radexa.com.br redireciona para www — usar www direto (a ponte confere a origem exata)
+const DEFAULT_URL = "https://www.radexa.com.br";
 
 const DEFAULT_SHORTCUTS = Object.freeze({
   dictate: "CommandOrControl+Shift+Space",
@@ -25,7 +26,12 @@ function resolveBaseUrl(env = process.env) {
 /** Só as páginas do próprio Radexa abrem dentro do app (e recebem a ponte). */
 function isAllowedUrl(target, origin) {
   try {
-    return new URL(target).origin === origin;
+    const a = new URL(target);
+    const b = new URL(origin);
+    if (a.origin === b.origin) return true;
+    // radexa.com.br ⇄ www.radexa.com.br: mesmo site (o servidor redireciona um para o outro)
+    const bare = (h) => h.replace(/^www\./, "");
+    return a.protocol === "https:" && b.protocol === "https:" && a.port === b.port && bare(a.hostname) === bare(b.hostname);
   } catch {
     return false;
   }
@@ -63,13 +69,14 @@ function pasteCommand(platform) {
   return { cmd: "xdotool", args: ["key", "--clearmodifiers", "ctrl+v"] };
 }
 
-const COLLAPSED = { width: 440, height: 84 };
-const EXPANDED = { width: 440, height: 560 };
+const COLLAPSED = { width: 460, height: 64 };
+const EXPANDED = { width: 460, height: 560 };
 const MIN_HEIGHT = 56;
 const MAX_HEIGHT = 720;
 
 /**
- * Barra no canto inferior direito da área útil, crescendo para cima. `height` pode ser
+ * Barra embaixo, no centro da área útil (acima do Dock/barra de tarefas), crescendo para cima;
+ * o médico arrasta para onde quiser e a posição fica salva. `height` pode ser
  * true/false (recolhida/aberta) ou a altura exata do conteúdo — sem sobra transparente
  * bloqueando cliques no programa de baixo.
  */
@@ -88,7 +95,7 @@ function barBounds(workArea, height, current) {
     return { x, y, ...size };
   }
   return {
-    x: workArea.x + workArea.width - size.width - margin,
+    x: workArea.x + Math.round((workArea.width - size.width) / 2),
     y: workArea.y + workArea.height - size.height - margin,
     ...size,
   };
@@ -129,6 +136,8 @@ function mergeConfig(saved) {
     barBounds: s.barBounds && Number.isFinite(s.barBounds.x) ? s.barBounds : null,
     openAtLogin: Boolean(s.openAtLogin),
     showBarOnStart: s.showBarOnStart !== false,
+    // modo discreto (barra fora de prints/compartilhamento de tela): desligado por padrão
+    discreet: s.discreet === true,
   };
 }
 

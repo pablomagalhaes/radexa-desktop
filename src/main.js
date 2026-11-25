@@ -179,8 +179,8 @@ function createBar() {
   });
   barWindow.setAlwaysOnTop(true, "floating");
   if (IS_MAC) barWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  // "modo discreto": a barra não aparece em capturas nem em compartilhamento de tela
-  barWindow.setContentProtection(true);
+  // "modo discreto" (opcional, no menu do R): a barra some de capturas e de compartilhamento de tela
+  barWindow.setContentProtection(Boolean(config.discreet));
   guardNavigation(barWindow);
   barWindow.once("ready-to-show", () => {
     if (config.showBarOnStart) barWindow.showInactive();
@@ -361,8 +361,12 @@ function handle(channel, fn) {
   });
 }
 
-ipcMain.on("desktop:origin", (event) => {
-  event.returnValue = { origin: ORIGIN, version: app.getVersion(), platform: process.platform };
+ipcMain.on("desktop:origin", (event, href) => {
+  event.returnValue = {
+    allowed: rules.isAllowedUrl(String(href || ""), ORIGIN),
+    version: app.getVersion(),
+    platform: process.platform,
+  };
 });
 handle("desktop:paste", (payload) => pasteIntoFocusedApp(payload));
 handle("desktop:copy", (payload) => {
@@ -426,6 +430,16 @@ function buildTrayMenu() {
       : []),
     { label: "Mudar atalhos…", click: () => shell.openPath(configFile()) },
     { type: "separator" },
+    {
+      label: "Modo discreto (barra não aparece em prints)",
+      type: "checkbox",
+      checked: Boolean(config.discreet),
+      click: (item) => {
+        config.discreet = item.checked;
+        if (barWindow && !barWindow.isDestroyed()) barWindow.setContentProtection(item.checked);
+        saveConfig();
+      },
+    },
     {
       label: "Abrir ao ligar o computador",
       type: "checkbox",
