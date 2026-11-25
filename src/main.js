@@ -206,9 +206,8 @@ function createBar() {
   // "modo discreto" (opcional, no menu do R): a barra some de capturas e de compartilhamento de tela
   barWindow.setContentProtection(Boolean(config.discreet));
   guardNavigation(barWindow);
-  barWindow.once("ready-to-show", () => {
-    if (config.showBarOnStart) barWindow.showInactive();
-  });
+  // a barra sempre aparece ao abrir o Radexa (esconder pelo X vale só até reabrir)
+  barWindow.once("ready-to-show", () => barWindow.showInactive());
   barWindow.on("moved", () => {
     config.barBounds = barWindow.getBounds();
     saveConfig();
@@ -223,8 +222,6 @@ function toggleBar(show) {
   const visible = barWindow.isVisible();
   if (show === true || (show === undefined && !visible)) barWindow.showInactive();
   else barWindow.hide();
-  config.showBarOnStart = barWindow.isVisible();
-  saveConfig();
   buildTrayMenu();
 }
 
@@ -341,8 +338,8 @@ function hideBarFromButton() {
     notify(
       "O Radexa continua aberto",
       IS_MAC
-        ? "Para mostrar a barra: clique no R na barra de menus (no alto da tela) › Mostrar a barra."
-        : "Para mostrar a barra: clique no R perto do relógio (se não aparecer, na setinha ^)."
+        ? "Para mostrar a barra: clique no ícone do Radexa no Dock, ou no R no alto da tela › Mostrar a barra."
+        : "Para mostrar a barra: abra o Radexa de novo pelo ícone, ou clique no R perto do relógio (setinha ^)."
     );
   }
 }
@@ -576,7 +573,11 @@ function createTray() {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", () => showMain());
+  // abrir o Radexa de novo (ícone na área de trabalho/menu Iniciar) traz a barra de volta
+  app.on("second-instance", () => {
+    showMain();
+    toggleBar(true);
+  });
   app.setAppUserModelId("br.com.radexa.desktop");
 
   app.whenReady().then(async () => {
@@ -588,6 +589,9 @@ if (!app.requestSingleInstanceLock()) {
     }
     createTray();
     createBar();
+    if (IS_MAC && app.dock) {
+      app.dock.setMenu(Menu.buildFromTemplate([{ label: "Mostrar a barra", click: () => toggleBar(true) }]));
+    }
     registerShortcuts();
     buildTrayMenu();
     const startedHidden = app.getLoginItemSettings().wasOpenedAsHidden || process.argv.includes("--hidden");
@@ -605,7 +609,11 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  app.on("activate", () => showMain());
+  // clique no ícone do Dock: janela e barra
+  app.on("activate", () => {
+    showMain();
+    toggleBar(true);
+  });
   app.on("before-quit", () => {
     quitting = true;
   });

@@ -1,7 +1,7 @@
 {
   "name": "radexa-desktop",
   "productName": "Radexa",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Radexa Desktop — dite e cole laudos por cima do sistema em que você lauda (Clinux, RIS…).",
   "main": "src/main.js",
   "author": "Radexa <contato@radexa.com.br>",
