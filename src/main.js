@@ -13,7 +13,9 @@ const { execFile } = require("node:child_process");
 const {
   app,
   BrowserWindow,
+  ClipboardItem,
   Menu,
+  Notification,
   Tray,
   clipboard,
   desktopCapturer,
@@ -58,6 +60,28 @@ function saveConfig() {
     fs.writeFileSync(configFile(), JSON.stringify(config, null, 2));
   } catch (err) {
     console.error("config_save_failed", err);
+  }
+}
+
+// ---------------------------------------------------------------- registro
+
+/** Registro simples (Radexa › menu do R › Abrir registro) para diagnosticar em outro computador. */
+const logFile = () => path.join(app.getPath("userData"), "radexa.log");
+function log(event, data = {}) {
+  try {
+    const file = logFile();
+    if (fs.existsSync(file) && fs.statSync(file).size > 1_000_000) fs.renameSync(file, `${file}.1`);
+    fs.appendFileSync(file, `${new Date().toISOString()} ${event} ${JSON.stringify(data)}\n`);
+  } catch {
+    /* sem registro não para o app */
+  }
+}
+
+function notify(title, body) {
+  try {
+    if (Notification.isSupported()) new Notification({ title, body, silent: true }).show();
+  } catch {
+    /* ignore */
   }
 }
 
@@ -223,20 +247,61 @@ function setBarHeight(height) {
 function runPaste() {
   const { cmd, args } = rules.pasteCommand(process.platform);
   return new Promise((resolve) => {
-    execFile(cmd, args, { timeout: 8000, windowsHide: true }, (err) => resolve(!err));
+    execFile(cmd, args, { timeout: 8000, windowsHide: true }, (err, _out, stderr) => {
+      if (err) log("paste_key_failed", { code: err.code, message: String(err.message).slice(0, 300), stderr: String(stderr || "").slice(0, 500) });
+      resolve(!err);
+    });
   });
 }
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Põe o laudo na área de transferência e confere.
+ *
+ * Electron 45 mudou a área de transferência para o modelo do navegador: `write()` recebe uma
+ * lista de ClipboardItem e devolve uma Promise, e `readText()` também é Promise. O código
+ * antigo (`write({ text, html })` sem esperar) falhava calado e o Ctrl+V colava o que já
+ * estava copiado antes (ex.: "Windows Defender SmartScreen"). Agora: escreve, espera, lê de
+ * volta e só segue quando o laudo está mesmo lá — senão não cola nada.
+ */
+async function writeClipboard(text, html) {
+  for (let attempt = 1; attempt <= 6; attempt++) {
+    try {
+      const data = html ? { "text/plain": text, "text/html": html } : { "text/plain": text };
+      await clipboard.write([new ClipboardItem(data)]);
+      if (rules.sameClipboardText(text, await clipboard.readText())) return true;
+    } catch (err) {
+      log("clipboard_write_error", { attempt, message: String(err && err.message).slice(0, 200) });
+      // sem HTML (alguns sistemas recusam o formato): pelo menos o texto
+      try {
+        await clipboard.writeText(text);
+        if (rules.sameClipboardText(text, await clipboard.readText())) return true;
+      } catch {
+        /* tenta de novo */
+      }
+    }
+    await wait(60 * attempt);
+  }
+  let readBack = -1;
+  try {
+    readBack = (await clipboard.readText()).length;
+  } catch {
+    /* ignore */
+  }
+  log("clipboard_not_written", { length: text.length, readBack });
+  return false;
+}
+
 async function pasteIntoFocusedApp(payload) {
   const text = String(payload?.text ?? "");
   const html = typeof payload?.html === "string" ? payload.html : undefined;
   if (!text.trim()) return { ok: false, reason: "empty" };
-  clipboard.write(html ? { text, html } : { text });
+  if (!(await writeClipboard(text, html))) return { ok: false, reason: "clipboard" };
   if (IS_MAC && !systemPreferences.isTrustedAccessibilityClient(false)) {
     // pede a permissão (abre o aviso do macOS); enquanto isso o laudo já está copiado
     systemPreferences.isTrustedAccessibilityClient(true);
+    log("paste_needs_accessibility");
     return { ok: false, reason: "accessibility" };
   }
   // se o médico estava numa janela do Radexa, devolve o foco ao programa anterior
@@ -246,11 +311,45 @@ async function pasteIntoFocusedApp(payload) {
     else ours.blur();
     await wait(250);
   } else {
-    await wait(60);
+    await wait(IS_MAC ? 60 : 120);
   }
   const ok = await runPaste();
+  log(ok ? "paste_ok" : "paste_failed", { length: text.length, html: Boolean(html) });
   if (IS_MAC && ours && barWindow && !barWindow.isDestroyed()) barWindow.showInactive();
   return ok ? { ok: true } : { ok: false, reason: "paste-failed" };
+}
+
+/** Menu do R › Testar colagem: em 3 s cola um texto de teste onde estiver o cursor. */
+async function testPaste() {
+  notify("Teste de colagem", "Clique no campo do Clinux/Word. Em 3 segundos o Radexa cola um texto de teste.");
+  await wait(3000);
+  const stamp = new Date().toLocaleTimeString("pt-BR");
+  const r = await pasteIntoFocusedApp({ text: `Teste do Radexa: colagem funcionando (${stamp}).` });
+  log("paste_test", r);
+  if (r.ok) notify("Teste de colagem", "Enviado. Se o texto de teste apareceu no campo, está tudo certo.");
+  else if (r.reason === "accessibility") notify("Falta uma permissão", "Libere o Radexa em Ajustes do Sistema › Privacidade e Segurança › Acessibilidade.");
+  else if (r.reason === "clipboard") notify("Não consegui copiar", "Outro programa está usando a área de transferência. Feche-o ou tente de novo.");
+  else notify("Não consegui colar", "O texto ficou copiado: cole com Ctrl+V. Envie o registro (menu do R) para o suporte.");
+}
+
+/** Esconder a barra pelo X: na 1ª vez, diz onde ela continua. */
+function hideBarFromButton() {
+  toggleBar(false);
+  if (!config.hideHintShown) {
+    config.hideHintShown = true;
+    saveConfig();
+    notify(
+      "O Radexa continua aberto",
+      IS_MAC
+        ? "Para mostrar a barra: clique no R na barra de menus (no alto da tela) › Mostrar a barra."
+        : "Para mostrar a barra: clique no R perto do relógio (se não aparecer, na setinha ^)."
+    );
+  }
+}
+
+function quitApp() {
+  quitting = true;
+  app.quit();
 }
 
 // ---------------------------------------------------------------- captura
@@ -369,10 +468,12 @@ ipcMain.on("desktop:origin", (event, href) => {
   };
 });
 handle("desktop:paste", (payload) => pasteIntoFocusedApp(payload));
-handle("desktop:copy", (payload) => {
+handle("desktop:copy", async (payload) => {
   const text = String(payload?.text ?? "");
-  clipboard.write(typeof payload?.html === "string" ? { text, html: payload.html } : { text });
+  return writeClipboard(text, typeof payload?.html === "string" ? payload.html : undefined);
 });
+handle("desktop:hide-bar", () => hideBarFromButton());
+handle("desktop:quit", () => quitApp());
 handle("desktop:capture", () => captureScreen());
 handle("desktop:choose-capture", () => chooseCaptureSource());
 handle("desktop:capture-name", () => (config.captureSource ? config.captureSource.name : null));
@@ -430,6 +531,9 @@ function buildTrayMenu() {
       : []),
     { label: "Mudar atalhos…", click: () => shell.openPath(configFile()) },
     { type: "separator" },
+    { label: "Testar colagem (cola um texto em 3 s)", click: () => void testPaste() },
+    { label: "Abrir registro (para o suporte)", click: () => shell.openPath(logFile()) },
+    { type: "separator" },
     {
       label: "Modo discreto (barra não aparece em prints)",
       type: "checkbox",
@@ -451,13 +555,7 @@ function buildTrayMenu() {
       },
     },
     { type: "separator" },
-    {
-      label: "Sair do Radexa",
-      click: () => {
-        quitting = true;
-        app.quit();
-      },
-    },
+    { label: "Sair do Radexa", click: () => quitApp() },
   ];
   tray.setContextMenu(Menu.buildFromTemplate(items));
 }
@@ -483,6 +581,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     loadConfig();
+    log("start", { version: app.getVersion(), platform: process.platform, release: require("node:os").release(), origin: ORIGIN });
     setupSession();
     if (IS_MAC && systemPreferences.getMediaAccessStatus("microphone") !== "granted") {
       await systemPreferences.askForMediaAccess("microphone").catch(() => false);

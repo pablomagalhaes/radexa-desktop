@@ -32,9 +32,16 @@ test("caminho interno seguro", () => {
 
 test("colar: comando por sistema", () => {
   assert.equal(r.pasteCommand("win32").cmd, "powershell.exe");
-  assert.match(r.pasteCommand("win32").args.at(-1), /SendKeys\('\^v'\)/);
+  const win = r.pasteCommand("win32").args.at(-1);
+  assert.match(win, /SendWait\('\^v'\)/);
+  assert.match(win, /ModifierKeys/, "espera soltar Shift/Ctrl do atalho antes de colar");
   assert.equal(r.pasteCommand("darwin").cmd, "osascript");
-  assert.match(r.pasteCommand("darwin").args[1], /command down/);
+  const mac = r.pasteCommand("darwin").args.at(-1);
+  assert.match(mac, /command down/);
+  assert.match(mac, /modifierFlags/);
+  // a área de transferência precisa ter o laudo antes do Ctrl+V (nunca colar o que estava lá antes)
+  assert.equal(r.sameClipboardText("Laudo\nLinha 2", "Laudo\r\nLinha 2\r\n"), true);
+  assert.equal(r.sameClipboardText("Laudo", "Windows Defender SmartScreen"), false);
 });
 
 test("barra embaixo no centro e cresce para cima", () => {

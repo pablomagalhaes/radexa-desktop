@@ -21,6 +21,8 @@ if (info && info.allowed) {
     setExpanded: (v) => void ipcRenderer.invoke("desktop:set-expanded", Boolean(v)),
     setHeight: (h) => void ipcRenderer.invoke("desktop:set-height", Number(h)),
     shortcuts: call("desktop:shortcuts"),
+    hideBar: () => void ipcRenderer.invoke("desktop:hide-bar"),
+    quit: () => void ipcRenderer.invoke("desktop:quit"),
     onCommand: (cb) => {
       const listener = (_e, cmd) => cb(cmd);
       ipcRenderer.on("desktop:command", listener);

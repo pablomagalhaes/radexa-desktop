@@ -43,30 +43,42 @@ function safeAppPath(path) {
   return path.replace(/[\r\n]/g, "");
 }
 
-/** Comando que aperta "colar" no programa em foco. */
+/**
+ * Comando que aperta "colar" no programa em foco. Antes, espera o médico soltar as teclas do
+ * atalho (Ctrl/Cmd+Shift+L): com o Shift ainda apertado, o Ctrl+V vira Ctrl+Shift+V, que no
+ * Word e em vários sistemas é outra coisa ("colar formatação", "colar sem formatação").
+ */
+const WIN_PASTE = [
+  "Add-Type -AssemblyName System.Windows.Forms",
+  "$t = [Diagnostics.Stopwatch]::StartNew()",
+  "while ([System.Windows.Forms.Control]::ModifierKeys -ne [System.Windows.Forms.Keys]::None -and $t.ElapsedMilliseconds -lt 1500) { Start-Sleep -Milliseconds 25 }",
+  "[System.Windows.Forms.SendKeys]::SendWait('^v')",
+].join("; ");
+
+const MAC_PASTE = [
+  "ObjC.import('AppKit');",
+  "var n = 0;",
+  "while (($.NSEvent.modifierFlags & 0x1E0000) && n < 60) { delay(0.025); n++; }",
+  "Application('System Events').keystroke('v', { using: 'command down' });",
+].join(" ");
+
 function pasteCommand(platform) {
   if (platform === "win32") {
     return {
       cmd: "powershell.exe",
-      args: [
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-WindowStyle",
-        "Hidden",
-        "-Command",
-        "(New-Object -ComObject WScript.Shell).SendKeys('^v')",
-      ],
+      args: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", WIN_PASTE],
     };
   }
   if (platform === "darwin") {
-    return {
-      cmd: "osascript",
-      args: ["-e", 'tell application "System Events" to keystroke "v" using command down'],
-    };
+    return { cmd: "osascript", args: ["-l", "JavaScript", "-e", MAC_PASTE] };
   }
   return { cmd: "xdotool", args: ["key", "--clearmodifiers", "ctrl+v"] };
+}
+
+/** A área de transferência tem mesmo o laudo? (o Windows devolve \r\n; espaços nas pontas não contam) */
+function sameClipboardText(expected, actual) {
+  const norm = (v) => String(v ?? "").replace(/\r\n?/g, "\n").replace(/\u00a0/g, " ").trim();
+  return norm(expected) === norm(actual);
 }
 
 const COLLAPSED = { width: 460, height: 64 };
@@ -138,6 +150,7 @@ function mergeConfig(saved) {
     showBarOnStart: s.showBarOnStart !== false,
     // modo discreto (barra fora de prints/compartilhamento de tela): desligado por padrão
     discreet: s.discreet === true,
+    hideHintShown: s.hideHintShown === true,
   };
 }
 
@@ -148,6 +161,7 @@ module.exports = {
   isAllowedUrl,
   safeAppPath,
   pasteCommand,
+  sameClipboardText,
   barBounds,
   pickCaptureSource,
   matchKeyFor,
